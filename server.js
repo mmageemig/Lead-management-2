@@ -35,8 +35,12 @@ const router = new Router();
 registerAuthRoutes(router);
 registerFunnelRoutes(router);
 registerAgentRoutes(router);
-registerAdminRoutes(router);
+// Import routes must be registered before admin routes: routes match in
+// registration order, and admin's GET /admin/leads/:id would otherwise
+// swallow /admin/leads/import (treating "import" as a lead id) since it's
+// registered first.
 registerImportRoutes(router);
+registerAdminRoutes(router);
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MIME = {
