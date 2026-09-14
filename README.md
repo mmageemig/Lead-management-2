@@ -10,7 +10,7 @@ Built with **zero external npm packages**. It runs on plain Node.js (using the b
 - **Lead intake** — add leads manually from the admin panel, or point an external funnel/landing page at a webhook (`POST /api/funnel/leads`) protected by an API key.
 - **Free vs. paid leads** — every lead is tagged `free` or `paid`. Paid leads carry a cost (the current global price at the time they're created, or a manual override).
 - **Agent portal** — agents register their own account, browse the lead pool (contact details are hidden until claimed), claim leads, and update status (Working / Sold / Dead) with notes.
-- **Wallets** — every agent has a running balance. Claiming a paid lead debits the wallet automatically; insufficient funds blocks the claim. Agents send funds via CashApp to **$MageeInsGrp** and then submit a funding request noting the amount, which an admin confirms to credit the balance — there's no payment processor wired in, so this models how a lot of small agencies actually collect payment. Every credit/debit is recorded in a full transaction ledger.
+- **Wallets** — every agent has a running balance. Claiming a paid lead debits the wallet automatically; insufficient funds blocks the claim. Agents submit funding requests (e.g. "I sent $100 via Zelle") which an admin confirms to credit the balance — there's no payment processor wired in, so this models how a lot of small agencies actually collect payment. Every credit/debit is recorded in a full transaction ledger.
 - **Refunds** — if a paid lead "doesn't pan out," the agent marks it Dead and requests a refund; the admin approves or denies it. Approval credits a configurable percentage (50% by default) of the lead's cost back to the agent's wallet.
 - **Settings** — change the global paid-lead price and refund percentage at any time, and regenerate the funnel API key.
 
@@ -74,7 +74,7 @@ Only `lead_type` matters for billing (`"free"` or `"paid"`; anything else is tre
 
 ## How the money flows
 
-- **Deposits**: agent sends payment via CashApp to **$MageeInsGrp** and submits a funding request noting the amount → admin confirms it was received → balance credited, logged as a `deposit` transaction.
+- **Deposits**: agent submits a funding request → admin confirms it was received → balance credited, logged as a `deposit` transaction.
 - **Claiming a paid lead**: balance debited by the lead's recorded cost, logged as a `lead_purchase` transaction. Blocked if the balance is too low.
 - **Refunds**: agent marks a paid lead `Dead / No Pan Out` → requests a refund → admin approves → the configured percentage (default 50%) of that lead's original cost is credited back, logged as a `refund` transaction, and the lead is closed out.
 - **Manual adjustments**: an admin can credit or debit any agent's wallet directly from that agent's page (for corrections, bonuses, chargebacks, etc.), logged as an `adjustment` transaction.

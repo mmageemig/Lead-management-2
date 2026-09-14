@@ -29,12 +29,14 @@ const { registerAuthRoutes } = require('./routes/auth');
 const { registerFunnelRoutes } = require('./routes/funnel');
 const { registerAgentRoutes } = require('./routes/agent');
 const { registerAdminRoutes } = require('./routes/admin');
+const { registerImportRoutes } = require('./routes/import');
 
 const router = new Router();
 registerAuthRoutes(router);
 registerFunnelRoutes(router);
 registerAgentRoutes(router);
 registerAdminRoutes(router);
+registerImportRoutes(router);
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MIME = {

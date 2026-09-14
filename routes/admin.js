@@ -5,6 +5,7 @@ const { redirect, sendHtml } = require('../lib/http');
 const { requireRole } = require('../lib/guards');
 const { UserError } = require('../lib/errors');
 const { layout, esc, money, fmtDate, statusBadge, leadTypeBadge } = require('../lib/ui');
+const { htmlLocalToStorage, storageToHtmlLocal } = require('../lib/dates');
 
 function leadName(lead) {
   return [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Unnamed lead';
@@ -23,7 +24,7 @@ function leadRow(lead) {
     <td>${lead.lead_type === 'paid' ? money(lead.cost_cents) : '<span class="muted">Free</span>'}</td>
     <td>${statusBadge(lead.status)}</td>
     <td>${esc(lead.agent_name || '—')}</td>
-    <td>${fmtDate(lead.created_at)}</td>
+    <td>${fmtDate(lead.received_at || lead.created_at)}</td>
   </tr>`;
 }
 
@@ -52,6 +53,9 @@ function leadFormHtml(action, lead = {}, submitLabel = 'Save') {
       <label>Cost override (USD, paid only)
         <input type="number" step="0.01" min="0" name="cost_override" placeholder="Uses current global price if blank" value="${lead.cost_cents != null && lead.lead_type === 'paid' && lead._explicit_cost ? (lead.cost_cents / 100).toFixed(2) : ''}">
       </label>
+      <label>Lead received
+        <input type="datetime-local" name="received_at" value="${esc(storageToHtmlLocal(lead.received_at))}">
+      </label>
       ${fields}
     </div>
     <button class="btn btn-primary" type="submit">${submitLabel}</button>
@@ -73,7 +77,7 @@ function registerAdminRoutes(router) {
     const walletTotal = db.prepare("SELECT COALESCE(SUM(wallet_balance_cents),0) s FROM users WHERE role='agent'").get().s;
     const pendingFunding = db.prepare("SELECT COUNT(*) c FROM funding_requests WHERE status='pending'").get().c;
     const pendingRefunds = db.prepare("SELECT COUNT(*) c FROM refund_requests WHERE status='pending'").get().c;
-    const recentLeads = db.prepare(`SELECT l.*, u.name as agent_name FROM leads l LEFT JOIN users u ON u.id = l.claimed_by ORDER BY l.created_at DESC LIMIT 8`).all();
+    const recentLeads = db.prepare(`SELECT l.*, u.name as agent_name FROM leads l LEFT JOIN users u ON u.id = l.claimed_by ORDER BY l.received_at DESC LIMIT 8`).all();
 
     const body = `
     <div class="page-head"><h1>Admin dashboard</h1></div>
@@ -91,7 +95,7 @@ function registerAdminRoutes(router) {
       <div class="stat-card ${pendingRefunds ? 'stat-alert' : ''}"><div class="stat-label">Pending refund requests</div><div class="stat-value">${pendingRefunds}</div><a class="stat-link" href="/admin/refund-requests">Review →</a></div>
     </div>
     <h2>Recent leads</h2>
-    ${recentLeads.length ? `<table class="table"><thead><tr><th>Lead</th><th>Location</th><th>Type</th><th>Cost</th><th>Status</th><th>Agent</th><th>Added</th></tr></thead><tbody>${recentLeads.map(leadRow).join('')}</tbody></table>` : '<p class="muted">No leads yet.</p>'}
+    ${recentLeads.length ? `<table class="table"><thead><tr><th>Lead</th><th>Location</th><th>Type</th><th>Cost</th><th>Status</th><th>Agent</th><th>Received</th></tr></thead><tbody>${recentLeads.map(leadRow).join('')}</tbody></table>` : '<p class="muted">No leads yet.</p>'}
     `;
     sendHtml(ctx.res, layout({ title: 'Admin dashboard', user: ctx.user, active: 'dashboard', body, query: ctx.query }));
   });
@@ -105,12 +109,12 @@ function registerAdminRoutes(router) {
     const params = [];
     if (status !== 'all') { sql += ' AND l.status = ?'; params.push(status); }
     if (type !== 'all') { sql += ' AND l.lead_type = ?'; params.push(type); }
-    sql += ' ORDER BY l.created_at DESC LIMIT 300';
+    sql += ' ORDER BY l.received_at DESC LIMIT 300';
     const leads = db.prepare(sql).all(...params);
 
     const currentPrice = parseInt(getSetting('paid_lead_price_cents'), 10);
     const body = `
-    <div class="page-head"><h1>Leads</h1><button class="btn btn-primary" type="button" onclick="document.getElementById('add-lead-form').classList.toggle('hidden')">+ Add lead</button></div>
+    <div class="page-head"><h1>Leads</h1><div><a class="btn btn-secondary" href="/admin/leads/import">Import CSV</a> <button class="btn btn-primary" type="button" onclick="document.getElementById('add-lead-form').classList.toggle('hidden')">+ Add lead</button></div></div>
     <div id="add-lead-form" class="panel hidden">
       <h3>Add a lead manually</h3>
       <p class="muted small">Current global paid lead price: <strong>${money(currentPrice)}</strong>. Leave the cost override blank to use it.</p>
@@ -126,7 +130,7 @@ function registerAdminRoutes(router) {
         `<a class="tab ${type === t ? 'active' : ''}" href="/admin/leads?type=${t}${status !== 'all' ? '&status=' + status : ''}">${t === 'all' ? 'All types' : esc(t)}</a>`
       ).join('')}
     </div>
-    ${leads.length ? `<table class="table"><thead><tr><th>Lead</th><th>Location</th><th>Type</th><th>Cost</th><th>Status</th><th>Agent</th><th>Added</th></tr></thead><tbody>${leads.map(leadRow).join('')}</tbody></table>` : '<p class="muted">No leads match this filter.</p>'}
+    ${leads.length ? `<table class="table"><thead><tr><th>Lead</th><th>Location</th><th>Type</th><th>Cost</th><th>Status</th><th>Agent</th><th>Received</th></tr></thead><tbody>${leads.map(leadRow).join('')}</tbody></table>` : '<p class="muted">No leads match this filter.</p>'}
     `;
     sendHtml(ctx.res, layout({ title: 'Leads', user: ctx.user, active: 'leads', body, query: ctx.query }));
   });
@@ -140,16 +144,17 @@ function registerAdminRoutes(router) {
       costCents = b.cost_override && b.cost_override.trim() !== '' ? centsFromInput(b.cost_override) : parseInt(getSetting('paid_lead_price_cents'), 10);
     }
     const id = newId('lead');
+    const receivedAt = htmlLocalToStorage(b.received_at);
     db.prepare(`INSERT INTO leads (
       id, lead_type, cost_cents, status, first_name, last_name, phone, email, address, city, state, zip,
-      insurance_type, current_carrier, coverage_interest, dob, age, household_size, income_range, source, campaign
-    ) VALUES (?,?,?,'unclaimed',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      insurance_type, current_carrier, coverage_interest, dob, age, household_size, income_range, source, campaign, received_at
+    ) VALUES (?,?,?,'unclaimed',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, COALESCE(?, datetime('now')))`).run(
       id, leadType, costCents,
       b.first_name || null, b.last_name || null, b.phone || null, b.email || null,
       b.address || null, b.city || null, b.state || null, b.zip || null,
       b.insurance_type || null, b.current_carrier || null, b.coverage_interest || null,
       b.dob || null, b.age ? parseInt(b.age, 10) : null, b.household_size ? parseInt(b.household_size, 10) : null,
-      b.income_range || null, b.source || 'manual', b.campaign || null
+      b.income_range || null, b.source || 'manual', b.campaign || null, receivedAt
     );
     redirect(ctx.res, '/admin/leads?success=' + encodeURIComponent('Lead added.'));
   });
@@ -215,8 +220,10 @@ function registerAdminRoutes(router) {
     } else {
       costCents = 0;
     }
+    const receivedAt = htmlLocalToStorage(b.received_at);
     db.prepare(`UPDATE leads SET lead_type=?, cost_cents=?, first_name=?, last_name=?, phone=?, email=?, address=?, city=?, state=?, zip=?,
-      insurance_type=?, current_carrier=?, coverage_interest=?, dob=?, age=?, household_size=?, income_range=?, source=?, campaign=?, updated_at=datetime('now')
+      insurance_type=?, current_carrier=?, coverage_interest=?, dob=?, age=?, household_size=?, income_range=?, source=?, campaign=?,
+      received_at=COALESCE(?, received_at), updated_at=datetime('now')
       WHERE id=?`).run(
       leadType, costCents,
       b.first_name || null, b.last_name || null, b.phone || null, b.email || null,
@@ -224,6 +231,7 @@ function registerAdminRoutes(router) {
       b.insurance_type || null, b.current_carrier || null, b.coverage_interest || null,
       b.dob || null, b.age ? parseInt(b.age, 10) : null, b.household_size ? parseInt(b.household_size, 10) : null,
       b.income_range || null, b.source || null, b.campaign || null,
+      receivedAt,
       lead.id
     );
     redirect(ctx.res, `/admin/leads/${lead.id}?success=` + encodeURIComponent('Lead updated.'));

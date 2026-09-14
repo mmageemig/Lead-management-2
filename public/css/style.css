@@ -184,11 +184,6 @@ textarea { resize: vertical; }
 .text-pos { color: var(--green); font-weight: 600; }
 .text-neg { color: var(--red); font-weight: 600; }
 
-.cashtag-callout {
-  background: var(--green-bg); color: var(--green); border: 1px solid #bfe6d4;
-  border-radius: 8px; padding: 10px 12px; font-size: 13.5px; margin: 0 0 4px;
-}
-
 .doc-details { margin-top: 10px; font-size: 13px; }
 .doc-details pre { background: #0f172a; color: #d7e2f5; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; }
 code { background: var(--gray-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }

@@ -17,7 +17,7 @@ function poolRow(lead) {
     <td>${esc(lead.insurance_type || '—')}</td>
     <td>${leadTypeBadge(lead.lead_type)}</td>
     <td>${lead.lead_type === 'paid' ? money(lead.cost_cents) : '<span class="muted">Free</span>'}</td>
-    <td>${fmtDate(lead.created_at)}</td>
+    <td>${fmtDate(lead.received_at || lead.created_at)}</td>
     <td class="right">
       <a class="btn btn-small" href="/portal/leads/${lead.id}">View</a>
     </td>
@@ -80,14 +80,14 @@ function registerAgentRoutes(router) {
     const type = ['free', 'paid'].includes(ctx.query.type) ? ctx.query.type : 'all';
     let leads;
     if (type === 'all') {
-      leads = db.prepare("SELECT * FROM leads WHERE status='unclaimed' ORDER BY created_at DESC").all();
+      leads = db.prepare("SELECT * FROM leads WHERE status='unclaimed' ORDER BY received_at DESC").all();
     } else {
-      leads = db.prepare("SELECT * FROM leads WHERE status='unclaimed' AND lead_type=? ORDER BY created_at DESC").all(type);
+      leads = db.prepare("SELECT * FROM leads WHERE status='unclaimed' AND lead_type=? ORDER BY received_at DESC").all(type);
     }
     const body = `
     <div class="page-head"><h1>Lead pool</h1><p class="muted">Contact details are revealed once you claim a lead.</p></div>
     ${filterTabs('/portal/leads', type, [['all', 'All'], ['free', 'Free'], ['paid', 'Paid']])}
-    ${leads.length ? `<table class="table"><thead><tr><th>Lead</th><th>Location</th><th>Interest</th><th>Type</th><th>Cost</th><th>Added</th><th></th></tr></thead><tbody>${leads.map(poolRow).join('')}</tbody></table>`
+    ${leads.length ? `<table class="table"><thead><tr><th>Lead</th><th>Location</th><th>Interest</th><th>Type</th><th>Cost</th><th>Received</th><th></th></tr></thead><tbody>${leads.map(poolRow).join('')}</tbody></table>`
       : '<p class="muted">No leads available in this category right now. Check back soon.</p>'}
     `;
     sendHtml(ctx.res, layout({ title: 'Lead pool', user: ctx.user, active: 'pool', body, query: ctx.query }));
@@ -140,6 +140,7 @@ function registerAgentRoutes(router) {
           <dt>Household size</dt><dd>${esc(lead.household_size != null ? lead.household_size : '—')}</dd>
           <dt>Income range</dt><dd>${esc(lead.income_range || '—')}</dd>
           <dt>Source / campaign</dt><dd>${esc([lead.source, lead.campaign].filter(Boolean).join(' / ') || '—')}</dd>
+          <dt>Received</dt><dd>${fmtDate(lead.received_at || lead.created_at)}</dd>
         </dl>`;
     } else {
       detailFields = `
@@ -150,6 +151,7 @@ function registerAgentRoutes(router) {
           <dt>Age</dt><dd>${esc(lead.age != null ? lead.age : '—')}</dd>
           <dt>Household size</dt><dd>${esc(lead.household_size != null ? lead.household_size : '—')}</dd>
           <dt>Source</dt><dd>${esc(lead.source || '—')}</dd>
+          <dt>Received</dt><dd>${fmtDate(lead.received_at || lead.created_at)}</dd>
         </dl>
         <p class="muted small">Full contact details (name, phone, email, address) are revealed once you claim this lead.</p>`;
     }
@@ -320,10 +322,10 @@ function registerAgentRoutes(router) {
       <div>
         <div class="panel">
           <h3>Add funds</h3>
-          <p class="cashtag-callout">Send payment via <strong>CashApp to $MageeInsGrp</strong>, then submit a request below with the amount so it can be confirmed and credited.</p>
+          <p class="muted small">Submit a funding request with the amount you've sent (check, Zelle, etc.). Your administrator will confirm receipt and credit your wallet.</p>
           <form method="post" action="/portal/wallet/fund-request">
-            <label>Amount sent (USD)<input type="number" name="amount" min="1" step="0.01" required></label>
-            <label>Note (optional)<input type="text" name="note" placeholder="e.g. CashApp sent 9/11"></label>
+            <label>Amount (USD)<input type="number" name="amount" min="1" step="0.01" required></label>
+            <label>Note (optional)<input type="text" name="note" placeholder="e.g. Zelle sent 9/11"></label>
             <button class="btn btn-primary" type="submit">Submit funding request</button>
           </form>
         </div>
