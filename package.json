@@ -1,0 +1,14 @@
+{
+  "name": "insurance-lead-manager",
+  "version": "1.0.0",
+  "description": "Web-based lead management system for insurance leads - agent portal, wallet & lead purchasing, refunds, admin dashboard. Zero external dependencies - runs on plain Node.js.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {}
+}
